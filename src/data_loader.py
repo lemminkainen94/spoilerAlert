@@ -39,15 +39,19 @@ class ReviewDataset(Dataset):
           'targets': torch.tensor(target, dtype=torch.long)
         }
 
-def create_data_loader(df, tokenizer, max_len, batch_size):
+def create_data_loader(df, args):
     ds = ReviewDataset(
         reviews=df.sentence.to_numpy(),
         targets=df.has_spoiler.to_numpy(),
-        tokenizer=tokenizer,
-        max_len=max_len
+        tokenizer=args.tokenizer,
+        max_len=args.max_len
     )
     return DataLoader(
         ds,
-        batch_size=batch_size,
+        batch_size=args.batch_size,
         shuffle=True
     )
+
+
+if __name__ == '__main__':
+    pass

@@ -2,17 +2,8 @@ import torch
 from torch import nn, optim
 
 
-def train_epoch(
-    model,
-    data_loader,
-    loss_fn,
-    optimizer,
-    device,
-    n_examples,
-    scheduler=None,
-    model_type='transformer'
-):
-    model = model.train()
+def train_epoch(args):
+    args.model = args.model.train()
     losses = []
     avg_losses = []
     aurocs = []
@@ -20,15 +11,15 @@ def train_epoch(
     correct_predictions = 0
     i = 0
     t0 = time()
-    for d in data_loader:
-        input_ids = d["input_ids"].to(device)
-        targets = d["targets"].to(device)
+    for d in args.train_dl:
+        input_ids = d["input_ids"].to(args.device)
+        targets = d["targets"].to(args.device)
         outputs = torch.zeros_like(targets)
-        if model_type == 'LSTM':
-            outputs = model(input_ids)
+        if args.arch == 'LSTM':
+            outputs = args.model(input_ids)
         else:
-            attention_mask = d["attention_mask"].to(device)
-            outputs = model(
+            attention_mask = d["attention_mask"].to(args.device)
+            outputs = args.model(
                 input_ids=input_ids,
                 attention_mask=attention_mask
             )
@@ -39,15 +30,19 @@ def train_epoch(
         aurocs.append(roc_auc_score(targets.cpu(), preds.cpu()))
         losses.append(loss.item())
         loss.backward()
-        nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-        optimizer.step()
-        if scheduler:
-            scheduler.step()
-        optimizer.zero_grad()
+        nn.utils.clip_grad_norm_(args.model.parameters(), max_norm=1.0)
+        args.optimizer.step()
+        if args.scheduler:
+            args.scheduler.step()
+        args.optimizer.zero_grad()
         i += 1
         if i % 100 == 0:
             avg_aurocs.append(np.mean(aurocs[i-100:i]))
             avg_losses.append(np.mean(losses[i-100:i]))
             print(i, 'iters, auroc, loss, time : ', avg_aurocs[-1], avg_losses[-1], time()-t0)
 
-    return correct_predictions.double() / n_examples, np.mean(losses), avg_losses, avg_aurocs
+    return correct_predictions.double() / args.train_steps, np.mean(losses), avg_losses, avg_aurocs
+
+
+if __name__ == '__main__':
+    pass

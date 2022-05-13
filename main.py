@@ -5,12 +5,16 @@ import random
 import transformers
 import torch
 import torch.nn.functional as F
+import warnings
 
 from collections import defaultdict
 from sklearn.metrics import roc_auc_score, classification_report
+from sklearn.model_selection import train_test_split
 from time import time
+from torch import nn, optim
 from torch.utils.tensorboard import SummaryWriter
-from transformers import BertTokenizer
+from torchnlp.encoders.text import StaticTokenizerEncoder, stack_and_pad_tensors, pad_tensor
+from transformers import AutoTokenizer, AdamW, get_linear_schedule_with_warmup
 
 from src.transformer_model import SpoilerClassifier
 from src.lstm_model import LSTMSpoilerClassifier
@@ -19,7 +23,7 @@ from src.eval import eval_model, get_predictions
 from src.data_loader import create_data_loader
 
 
-def run_epoch(args, epoch, writer):
+def run_epoch(args, epoch, writer, best_auroc):
     print(f'Epoch {epoch + 1}/{args.epochs}')
     print('-' * 10)
     train_acc, train_loss, train_avg_losses, train_auroc = train_epoch(args)
@@ -50,8 +54,9 @@ def run_epoch(args, epoch, writer):
 def parse_args():
     parser = argparse.ArgumentParser("SploilerAlert")
     parser.add_argument('data', type=str, help='path to data file')
-    parser.add_argument('--tokenizer', type=str, default='bert-base-cased',
-                        help='Huggingface Transformers pretrained tokenizer. bert-base-cased by default')
+    parser.add_argument('--model_name', type=str, default='bert-base-cased',
+                        help='Huggingface Transformers pretrained model. bert-base-cased by default' +
+                        'Can also try google/electra-small-discriminator or distilbert-base-(un)cased')
     parser.add_argument('--arch', type=str, default='transformer',
                         help='Choose the model architecture for training and/or eval. Can be:\n' +
                         'transformer: the default transformer model, not trained on spoiler detection\n' +
@@ -61,7 +66,7 @@ def parse_args():
                         "Must conform with the chosen architecture")
     parser.add_argument('--out_model', default=None, help="Name of the trained model (will be saved with that name). Used for training only")
     parser.add_argument("--max_len", default=128, type=int,
-                        help="The maximum total input sequence length after BERT tokenization. Sequences "
+                        help="The maximum total input sequence length after tokenization. Sequences "
                         "longer than this will be truncated, and sequences shorter than this will be padded.")
     parser.add_argument('--seed',
                         type=int,
@@ -75,14 +80,14 @@ def parse_args():
                         default=False,
                         action='store_true',
                         help="Whether on test mode")
-    parser.add_argument('--learning_rate',
+    parser.add_argument('--lr',
                         type = float,
                         default = 0.003,
                         help = "Adam (for LSTM) or AdamW (for transformer-based) learning rate. Default is 0.003.")
     parser.add_argument("--hidden_dim",
                         type = int,
                         default = 32,
-                        help = "Number of neurons of the hidden layer. Default is 32.") 
+                        help = "Number of neurons of the LSTM hidden layer. Default is 32.") 
     parser.add_argument("--lstm_layers",
                         type = int,
                         default = 2,
@@ -100,6 +105,7 @@ def parse_args():
 
 
 def main():
+    warnings.filterwarnings("ignore")
     args = parse_args()
 
     args.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -115,15 +121,18 @@ def main():
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-    # Loading Tokenizer
-    args.tokenizer = BertTokenizer.from_pretrained(args.tokenizer)
+    args.tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+
+    print(args.tokenizer.vocab_size)
+
+    args.vocab_size = args.tokenizer.vocab_size + 1
 
     args.model = None
 
     if args.arch == 'transformer':
-        args.model_name = 'bert-base-cased'
         args.model = SpoilerClassifier(args)
     elif args.arch == 'LSTM':
+        args.embedding_dim = 32
         args.model = LSTMSpoilerClassifier(args)
 
     if args.in_model:
@@ -137,7 +146,7 @@ def main():
         class_names = ['no_spoilers', 'has_spoilers']
         args.test_dl = create_data_loader(df, args)        
         y_review_texts, y_pred, y_pred_probs, y_test = get_predictions(args)
-        print(roc_auc_score(y_test, y_pred))
+        print(roc_auc_score(y_test, y_pred_probs))
         print(classification_report(y_test, y_pred, target_names=class_names))
         print(y_test.shape, y_pred_probs.flatten().shape)
         writer.add_pr_curve(class_names[1], y_test, y_pred_probs.flatten())
@@ -152,11 +161,12 @@ def main():
         model.network.pred_final_layer.weight.requires_grad = True
         model.network.pred_final_layer.bias.requires_grad = True"""
         df_train, df_eval = train_test_split(df, test_size=0.2, random_state=args.seed)
-        args.train_dl = create_data_loader(df_train)
-        args.eval_dl = create_data_loader(df_eval)
+        print(df_train.shape, df_eval.shape)
+        args.train_dl = create_data_loader(df_train, args)
+        args.eval_dl = create_data_loader(df_eval, args)
 
-        args.train_steps = len(train_dl)
-        args.eval_steps = len(eval_dl)
+        args.train_size = len(df_train)
+        args.eval_size = len(df_eval)
 
         args.loss_fn = nn.BCEWithLogitsLoss().to(args.device)
 
@@ -166,7 +176,7 @@ def main():
             args.scheduler = get_linear_schedule_with_warmup(
                 args.optimizer,
                 num_warmup_steps=0,
-                num_training_steps=args.total_steps
+                num_training_steps=len(args.train_dl) * args.epochs
             )
         elif args.arch == 'LSTM':
             args.optimizer = optim.Adam(args.model.parameters(), lr=args.lr)
@@ -174,7 +184,7 @@ def main():
         args.history = defaultdict(list)
         best_auroc = 0
         for epoch in range(args.epochs):
-            run_epoch()
+            run_epoch(args, epoch, writer, best_auroc)
 
     writer.close()
 

@@ -11,7 +11,7 @@ def eval_model(args):
     with torch.no_grad():
         for d in args.eval_dl:
             input_ids = d["input_ids"].to(args.device)
-            targets = d["targets"].to(args.device)
+            targets = d["targets"].to(args.device).view(-1, 1)
             if args.arch == 'LSTM':
                 outputs = args.model(input_ids)
             else:
@@ -21,13 +21,21 @@ def eval_model(args):
                     attention_mask=attention_mask
                 )
 
-            _, preds = torch.max(outputs, dim=1)
-            loss = loss_fn(outputs, targets)
+            preds = torch.zeros_like(outputs)
+            ones = torch.ones_like(preds)
+            preds = torch.where(outputs < 0, preds, ones)
+
+            loss = args.loss_fn(outputs, targets.float())
             correct_predictions += torch.sum(preds == targets)
-            aurocs.append(roc_auc_score(targets.cpu(), preds.cpu()))
+            roc = 0
+            try:
+                roc = roc_auc_score(targets.cpu(), outputs.cpu().detach().numpy())
+            except ValueError:
+                pass
+            aurocs.append(roc)
             losses.append(loss.item())
 
-    return correct_predictions.double() / args.eval_steps, np.mean(losses), np.mean(aurocs)
+    return correct_predictions.double() / args.eval_size, np.mean(losses), np.mean(aurocs)
 
 
 def get_predictions(args):

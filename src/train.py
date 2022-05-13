@@ -1,4 +1,7 @@
+import numpy as np
 import torch
+from sklearn.metrics import roc_auc_score
+from time import time
 from torch import nn, optim
 
 
@@ -13,8 +16,9 @@ def train_epoch(args):
     t0 = time()
     for d in args.train_dl:
         input_ids = d["input_ids"].to(args.device)
-        targets = d["targets"].to(args.device)
+        targets = d["targets"].to(args.device).view(-1, 1)
         outputs = torch.zeros_like(targets)
+
         if args.arch == 'LSTM':
             outputs = args.model(input_ids)
         else:
@@ -24,15 +28,24 @@ def train_epoch(args):
                 attention_mask=attention_mask
             )
 
-        _, preds = torch.max(outputs, dim=1)
-        loss = loss_fn(outputs, targets)
+        preds = torch.zeros_like(outputs)
+        ones = torch.ones_like(preds)
+        preds = torch.where(outputs < 0, preds, ones)
+
+        loss = args.loss_fn(outputs, targets.float())
         correct_predictions += torch.sum(preds == targets)
-        aurocs.append(roc_auc_score(targets.cpu(), preds.cpu()))
+
+        roc = 0
+        try:
+            roc = roc_auc_score(targets.cpu(), outputs.cpu().detach().numpy())
+        except ValueError:
+            pass
+        aurocs.append(roc)
         losses.append(loss.item())
         loss.backward()
         nn.utils.clip_grad_norm_(args.model.parameters(), max_norm=1.0)
         args.optimizer.step()
-        if args.scheduler:
+        if 'scheduler' in args:
             args.scheduler.step()
         args.optimizer.zero_grad()
         i += 1
@@ -41,7 +54,7 @@ def train_epoch(args):
             avg_losses.append(np.mean(losses[i-100:i]))
             print(i, 'iters, auroc, loss, time : ', avg_aurocs[-1], avg_losses[-1], time()-t0)
 
-    return correct_predictions.double() / args.train_steps, np.mean(losses), avg_losses, avg_aurocs
+    return correct_predictions.double() / args.train_size, np.mean(losses), avg_losses, avg_aurocs
 
 
 if __name__ == '__main__':

@@ -1,0 +1,1 @@
+python main.py data/goodreads_sent_spoil_titles.pkl --arch LSTM --hidden_dim 16 --final_dropout 0.2 --epochs 20 --out_model models/lstm_2x16_ep20_balanced.pt

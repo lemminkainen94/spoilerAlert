@@ -64,6 +64,8 @@ def parse_args():
                         'More to follow...\n')
     parser.add_argument('--in_model', default=None, help="Path to the model weights to load for training/eval. \n" +
                         "Must conform with the chosen architecture")
+    parser.add_argument('--transformer_weights', default=None, help="Path to the transformer model weights to init with. \n" +
+                        "For instance if you fine-tune the trnasformer part of the model on LM on your dataset")
     parser.add_argument('--out_model', default=None, help="Name of the trained model (will be saved with that name). Used for training only")
     parser.add_argument("--max_len", default=128, type=int,
                         help="The maximum total input sequence length after tokenization. Sequences "
@@ -72,6 +74,10 @@ def parse_args():
                         type=int,
                         default=42,
                         help="random seed for initialization")
+    parser.add_argument('--acc_steps',
+                        type=int,
+                        default=1,
+                        help="gradient accumulation steps")
     parser.add_argument('--epochs',
                         type=int,
                         default=5,
@@ -138,7 +144,6 @@ def main():
     if args.in_model:
         args.model.load_state_dict(torch.load(args.in_model))
     args.model.to(args.device)
-
     writer = SummaryWriter()
 
     ### Model Evaluation
@@ -146,21 +151,24 @@ def main():
         class_names = ['no_spoilers', 'has_spoilers']
         args.test_dl = create_data_loader(df, args)        
         y_review_texts, y_pred, y_pred_probs, y_test = get_predictions(args)
+        df = pd.DataFrame(list(zip(y_review_texts, y_pred, y_pred_probs, y_test)), 
+               columns =['sentence', 'pred', 'pred_prob', 'true_val'])
+        df.to_csv('data/sent_rev_res.csv', index=False)
         print(roc_auc_score(y_test, y_pred_probs))
         print(classification_report(y_test, y_pred, target_names=class_names))
         print(y_test.shape, y_pred_probs.flatten().shape)
         writer.add_pr_curve(class_names[1], y_test, y_pred_probs.flatten())
     ### Model Training
     else:
-        # final layers fine-tuning
-        """for param in model.network.parameters():
+        """for param in args.model.parameters():
             param.requires_grad = False
-        
-        model.network.final_layer.weight.requires_grad = True
-        model.network.final_layer.bias.requires_grad = True
-        model.network.pred_final_layer.weight.requires_grad = True
-        model.network.pred_final_layer.bias.requires_grad = True"""
-        df_train, df_eval = train_test_split(df, test_size=0.2, random_state=args.seed)
+        unfreeze = [args.model.transformer.encoder.layer[11], args.model.drop, args.model.out]
+        for module in unfreeze:
+            for param in module.parameters():
+                param.requires_grad = True
+        """
+
+        df_train, df_eval = train_test_split(df, test_size=0.1, random_state=args.seed)
         print(df_train.shape, df_eval.shape)
         args.train_dl = create_data_loader(df_train, args)
         args.eval_dl = create_data_loader(df_eval, args)
@@ -176,7 +184,7 @@ def main():
             args.scheduler = get_linear_schedule_with_warmup(
                 args.optimizer,
                 num_warmup_steps=0,
-                num_training_steps=len(args.train_dl) * args.epochs
+                num_training_steps=int(len(args.train_dl) * args.epochs / args.acc_steps)
             )
         elif args.arch == 'LSTM':
             args.optimizer = optim.Adam(args.model.parameters(), lr=args.lr)

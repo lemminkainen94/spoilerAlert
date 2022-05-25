@@ -6,7 +6,8 @@ import torch
 def eval_model(args):
     args.model = args.model.eval()
     losses = []
-    aurocs = []
+    temp_outputs = []
+    temp_targets = []   
     correct_predictions = 0
     with torch.no_grad():
         for d in args.eval_dl:
@@ -27,15 +28,19 @@ def eval_model(args):
 
             loss = args.loss_fn(outputs, targets.float())
             correct_predictions += torch.sum(preds == targets)
-            roc = 0
-            try:
-                roc = roc_auc_score(targets.cpu(), outputs.cpu().detach().numpy())
-            except ValueError:
-                pass
-            aurocs.append(roc)
+
+            temp_outputs += outputs.cpu().tolist()
+            temp_targets += targets.cpu().tolist()
+
             losses.append(loss.item())
 
-    return correct_predictions.double() / args.eval_size, np.mean(losses), np.mean(aurocs)
+    roc = 0
+    try:
+        roc = roc_auc_score(temp_targets, temp_outputs)
+    except ValueError:
+        pass
+
+    return correct_predictions.double() / args.eval_size, np.mean(losses), roc
 
 
 def get_predictions(args):

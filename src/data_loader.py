@@ -27,6 +27,7 @@ class ReviewDataset(Dataset):
           return_attention_mask=True,
           return_tensors='pt',
         )
+
         return {
           'review_text': review,
           'input_ids': encoding['input_ids'].flatten(),
@@ -100,4 +101,66 @@ def get_transformer_item(self, review, target):
           'input_ids': encoding.flatten(),
           'targets': torch.tensor(target, dtype=torch.long)
         }
+
+
+
+    class ReviewDataset(Dataset):
+    def __init__(self, reviews, targets, tokenizer, ner_tokenizer, max_len=128):
+        self.reviews = reviews
+        self.targets = targets
+        self.tokenizer = tokenizer
+        self.ner_tokenizer = ner_tokenizer
+        self.max_len = max_len
+
+    def __len__(self):
+        return len(self.reviews)
+
+    def __getitem__(self, idx):
+        review = str(self.reviews[idx])
+        target = self.targets[idx]
+
+        encoding = self.tokenizer.encode_plus(
+          review,
+          add_special_tokens=True,
+          max_length=self.max_len,
+          return_token_type_ids=False,
+          pad_to_max_length=True,
+          return_attention_mask=True,
+          return_tensors='pt',
+        )
+
+        ner_encoding = self.ner_tokenizer.encode_plus(
+          review,
+          add_special_tokens=True,
+          max_length=self.max_len,
+          return_token_type_ids=False,
+          pad_to_max_length=True,
+          return_attention_mask=True,
+          return_tensors='pt',
+        )
+
+
+        return {
+          'review_text': review,
+          'input_ids': encoding['input_ids'].flatten(),
+          'attention_mask': encoding['attention_mask'].flatten(),
+          'ner_input_ids': ner_encoding['input_ids'].flatten(),
+          'ner_attention_mask': ner_encoding['attention_mask'].flatten(),
+          'targets': torch.tensor(target, dtype=torch.long)
+        }
+
+
+def create_data_loader(df, args):
+    ds = ReviewDataset(
+        reviews=df.sentence.to_numpy(),
+        targets=df.has_spoiler.to_numpy(),
+        tokenizer=args.tokenizer,
+        ner_tokenizer=args.ner_tokenizer,
+        max_len=args.max_len
+    )
+    return DataLoader(
+        ds,
+        batch_size=args.batch_size,
+        shuffle=True
+    )
 """

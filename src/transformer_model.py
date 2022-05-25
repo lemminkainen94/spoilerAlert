@@ -8,7 +8,11 @@ class SpoilerClassifier(nn.Module):
 
     def __init__(self, args):
         super(SpoilerClassifier, self).__init__()
-        self.transformer = AutoModel.from_pretrained(args.model_name, return_dict=False)
+        state_dict = None
+        if args.transformer_weights:
+            state_dict = torch.load(args.transformer_weights)
+        self.transformer = AutoModel.from_pretrained(args.model_name, state_dict=state_dict, return_dict=False)
+        
         self.drop = nn.Dropout(p=args.final_dropout)
         self.out = nn.Linear(self.transformer.config.hidden_size, 1) 
 

@@ -9,8 +9,10 @@ def train_epoch(args):
     args.model = args.model.train()
     losses = []
     avg_losses = []
-    aurocs = []
+    temp_outputs = []
+    temp_targets = []
     avg_aurocs = []
+    acc_losses = []
     correct_predictions = 0
     i = 0
     t0 = time()
@@ -33,24 +35,34 @@ def train_epoch(args):
         preds = torch.where(outputs < 0, preds, ones)
 
         loss = args.loss_fn(outputs, targets.float())
+        loss = loss / args.acc_steps
         correct_predictions += torch.sum(preds == targets)
 
-        roc = 0
-        try:
-            roc = roc_auc_score(targets.cpu(), outputs.cpu().detach().numpy())
-        except ValueError:
-            pass
-        aurocs.append(roc)
-        losses.append(loss.item())
+        temp_outputs += outputs.cpu().tolist()
+        temp_targets += targets.cpu().tolist()
+
+        acc_losses.append(loss.item())
         loss.backward()
         nn.utils.clip_grad_norm_(args.model.parameters(), max_norm=1.0)
-        args.optimizer.step()
-        if 'scheduler' in args:
-            args.scheduler.step()
-        args.optimizer.zero_grad()
+
         i += 1
-        if i % 100 == 0:
-            avg_aurocs.append(np.mean(aurocs[i-100:i]))
+        if i % args.acc_steps == 0:
+            losses.append(np.mean(acc_losses))
+            acc_losses = []
+            args.optimizer.step()
+            if 'scheduler' in args:
+                args.scheduler.step()
+            args.optimizer.zero_grad()
+        if i % (100 * args.acc_steps) == 0:
+            roc = 0
+            try:
+                roc = roc_auc_score(temp_targets, temp_outputs)
+            except ValueError:
+                pass
+            temp_outputs = []
+            temp_targets = []
+
+            avg_aurocs.append(roc)
             avg_losses.append(np.mean(losses[i-100:i]))
             print(i, 'iters, auroc, loss, time : ', avg_aurocs[-1], avg_losses[-1], time()-t0)
 

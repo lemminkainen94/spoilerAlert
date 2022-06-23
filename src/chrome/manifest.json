@@ -1,0 +1,16 @@
+{
+   "name": "ReviewSpoilerAlert",
+   "version": "1.0",
+   "description": "Scan the reviews and mark all sentences with potential spoilers",
+   "icons": { },
+   "permissions": [
+        "tabs",
+        "notifications",
+        "http://*/",
+        "https://*/"
+    ],
+   "browser_action": {
+     "default_popup": "popup.html"
+   },
+   "manifest_version": 2
+ }

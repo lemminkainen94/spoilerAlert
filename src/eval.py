@@ -24,7 +24,7 @@ def eval_model(args):
 
             preds = torch.zeros_like(outputs)
             ones = torch.ones_like(preds)
-            preds = torch.where(outputs < 0, preds, ones)
+            preds = torch.where(torch.sigmoid(outputs) < args.threshold, preds, ones)
 
             loss = args.loss_fn(outputs, targets.float())
             correct_predictions += torch.sum(preds == targets)

@@ -1,0 +1,10 @@
+{
+	"arch": "transformer",
+	"model_name": "google/electra-small-discriminator",
+	"in_model": "models/electra_ep5_non_weighted.pt",
+	"max_len": 128,
+	"acc_steps": 1,
+	"batch_size": 32,
+	"final_dropout": 0.3,
+	"threshold": 0.12
+}

@@ -70,6 +70,7 @@ def parse_args():
     parser.add_argument("--max_len", default=128, type=int,
                         help="The maximum total input sequence length after tokenization. Sequences "
                         "longer than this will be truncated, and sequences shorter than this will be padded.")
+    parser.add_argument('--threshold', type=float, default=0.5)
     parser.add_argument('--seed',
                         type=int,
                         default=42,

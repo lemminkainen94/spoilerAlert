@@ -8,6 +8,7 @@ import torch
 from nltk import tokenize
 from nltk.tokenize.treebank import TreebankWordDetokenizer
 from flask import Flask, request
+from flask_cors import CORS
 from types import SimpleNamespace
 from transformers import AutoTokenizer
 
@@ -102,7 +103,7 @@ def mark_spoilers(df):
     y_pred, y_pred_probs = get_predictions(args, data_loader)
     print(f'found {y_pred.sum()} spoilers!!!')
     df.has_spoiler = y_pred
-    df.sentence = df.apply(lambda x: '<spoiler>' + x.sentence + '</spoiler>' if x.has_spoiler == 1 else x.sentence, axis=1)
+    df.sentence = df.apply(lambda x: '<!!!!!!!!!SPOILER!!!!!!!!!!!!>' + x.sentence + '</!!!!!!!!!SPOILER!!!!!!!!!!!!>' if x.has_spoiler == 1 else x.sentence, axis=1)
 
     return df
 
@@ -120,10 +121,12 @@ def update_html(soup, df, pattern):
 def hide_spoilers_pattern(soup, pattern):
     df = prepare_df(soup, pattern)
     mark_spoilers(df)
+    print(df[df.has_spoiler==1].sentence)
     update_html(soup, df, pattern)
 
 
 app = Flask('spoiler-alert')
+CORS(app)
 
 
 @app.route('/spoilerAlert', methods=['POST'])

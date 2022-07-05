@@ -12,6 +12,8 @@ I focused on experimenting with different end-to-end deep learning models to pre
 ## Usage
 Overall, this provides a solid base for building a spoiler detection Chrome extension. For now it works pretty poorly, but in the future it might become more useful with more powerful models.    
 
+You can look at the dataset format in the data folder, where I uploaded the file I used for evaluating the models. I used data_prep.ipynb notebook to prepare the data.  
+
 ```pip install -r requirements.txt```  
 If you want to use a GPU and pytorch doesn't detect it, you might want to run: ```conda install pytorch torchvision torchaudio cudatoolkit=11.3 -c pytorch```  
 
